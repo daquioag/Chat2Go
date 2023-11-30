@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Management</title>
+    <link rel="stylesheet" href="https://unpkg.com/htmx.org@1.6.1/dist/htmx.css">
+    <script src="https://unpkg.com/htmx.org@1.6.1/dist/htmx.js"></script>
+</head>
+<body>
+    <h1>User List</h1>
+    <div id="user-list" hx-get="/users" hx-trigger="load">
+        <!-- User list will be dynamically updated here -->
+    </div>
+
+    <script>
+        document.addEventListener('htmx:afterSwap', function (event) {
+            // This event is triggered after htmx updates the content
+            console.log('Content updated:', event.detail.target);
+        });
+    </script>
+</body>
+</html>
