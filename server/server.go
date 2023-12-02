@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"regexp"
 	"strings"
 	"sync"
 )
@@ -14,15 +13,6 @@ import (
 type ChatServer struct {
 	clients map[string]net.Conn
 	mutex   sync.Mutex
-}
-
-func (s *ChatServer) validateNickname(name string) bool {
-	// Define the regular expression pattern
-	pattern := "^[a-zA-Z][a-zA-Z0-9_]{0,11}$"
-	regex := regexp.MustCompile(pattern)
-
-	// Check if the nickname matches the pattern and is not empty after trimming
-	return regex.MatchString(name) && strings.TrimSpace(name) != ""
 }
 
 func (s *ChatServer) handleClientCommand(conn net.Conn, data string) {
@@ -51,25 +41,16 @@ func (s *ChatServer) handleClientCommand(conn net.Conn, data string) {
 }
 
 func (s *ChatServer) handleListCommand(conn net.Conn) {
+
 	resultChan := make(chan string)
 	go s.createNameList(resultChan)
-
 	namesList := <-resultChan
 
 	fmt.Fprintf(conn, "List of NickNames: %s\n", namesList)
 }
 
-func (s *ChatServer) createNameList(resultChan chan<- string) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	var namesList []string
-	for nickname := range s.clients {
-		namesList = append(namesList, nickname)
-	}
-	resultChan <- strings.Join(namesList, ", ")
-}
-
 func (s *ChatServer) handleNickCommand(conn net.Conn, args []string) {
+
 	if len(args) != 1 {
 		// Invalid usage of /NICK command
 		fmt.Fprintf(conn, "Error: Invalid usage of /NICK command. Usage: /NICK <nickname>\n")
@@ -86,49 +67,18 @@ func (s *ChatServer) handleNickCommand(conn net.Conn, args []string) {
 
 }
 
-func (s *ChatServer) registerNickname(conn net.Conn, nickname string) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	if userConn, exists := s.clients[nickname]; exists {
-		if conn == userConn {
-			fmt.Fprintf(conn, "You already have the nickname: '%s'\n", nickname)
-		} else {
-			fmt.Fprintf(conn, "Error: The nickname '%s' is already taken\n", nickname)
-		}
-	} else {
-		oldNickname, _ := s.getNicknameByConn(conn)
-		delete(s.clients, oldNickname)
-		s.clients[nickname] = conn
-		fmt.Fprintf(conn, "You now have the nickname: '%s'\n", nickname)
-	}
-}
-
 func (s *ChatServer) handleBcCommand(conn net.Conn, args []string) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
 
 	nickname, found := s.getNicknameByConn(conn)
 	if !found {
 		fmt.Fprintf(conn, "Error: You must register a nickname before broadcasting.\n")
 		return
 	}
-	s.broadcastMessage(nickname, args)
-}
-
-func (s *ChatServer) broadcastMessage(senderNickname string, args []string) {
-
-	for nickname, clientConn := range s.clients {
-		if nickname != senderNickname {
-			// Send the broadcast message to all clients except the sender
-			fmt.Fprintf(clientConn, "[%s]: %s\n", senderNickname, strings.Join(args, " "))
-		}
-	}
+	message := strings.Join(args, " ")
+	s.broadcastMessage(nickname, message)
 }
 
 func (s *ChatServer) handleMsgCommand(conn net.Conn, args []string) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
 
 	if len(args) < 2 {
 		fmt.Fprintf(conn, "Error: Invalid usage of /MSG command. Usage: /MSG <nickname> <message>\n")
@@ -144,9 +94,8 @@ func (s *ChatServer) handleMsgCommand(conn net.Conn, args []string) {
 		return
 	}
 
-	receiverConn, exists := s.clients[receiverNickname]
-	if !exists {
-		fmt.Fprintf(conn, "The name: %s does not exist!\n", receiverNickname)
+	receiverConn, err := s.findReceiverConnection(conn, receiverNickname)
+	if err != nil {
 		return
 	}
 
@@ -200,19 +149,7 @@ func (s *ChatServer) handleClient(conn net.Conn) {
 
 func (s *ChatServer) handleClientDisconnected(conn net.Conn) {
 	// Perform cleanup or handle disconnection logic here
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
 	nickname, _ := s.getNicknameByConn(conn)
 	delete(s.clients, nickname)
 
-}
-
-func (s *ChatServer) getNicknameByConn(conn net.Conn) (string, bool) {
-	for nickname, clientConn := range s.clients {
-		if clientConn == conn {
-			return nickname, true
-		}
-	}
-	return "", false
 }
